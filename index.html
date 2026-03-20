@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuizAI — Transform Documents into Smart Quizzes</title>
+  <meta name="description" content="Upload any PDF, DOCX, image or text file and instantly generate AI-powered MCQ quizzes with explanations. Supports English and Hindi." />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+
+  <style>
+    /* ── BASE RESET ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 16px; }
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background: #07080F;
+      color: #F0F1FF;
+      line-height: 1.65;
+      overflow-x: hidden;
+    }
+    #root { min-height: 100vh; }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #6366F1; border-radius: 5px; }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(22px); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes fadeIn  { from { opacity: 0; }                   to { opacity: 1; } }
+    @keyframes scaleIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+    @keyframes pulse   { 0%,100% { opacity: 1; }                50% { opacity: 0.45; } }
+    @keyframes spin    { to { transform: rotate(360deg); } }
+    @keyframes gradMove{ 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+    @keyframes timerWarn{ 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+    @keyframes slideRight { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+
+    .fade-up  { animation: fadeUp  0.55s cubic-bezier(0.16,1,0.3,1) both; }
+    .fade-in  { animation: fadeIn  0.4s ease both; }
+    .scale-in { animation: scaleIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
+    .pulse    { animation: pulse   1.6s ease infinite; }
+    .spin     { animation: spin    0.85s linear infinite; }
+
+    /* ── UTILITY ── */
+    .delay-1 { animation-delay: 0.08s; }
+    .delay-2 { animation-delay: 0.16s; }
+    .delay-3 { animation-delay: 0.24s; }
+
+    /* ── OPTION HOVER ── */
+    .opt-btn { transition: transform 0.18s cubic-bezier(0.16,1,0.3,1), border-color 0.15s, background 0.15s !important; }
+    .opt-btn:not(:disabled):hover { transform: translateX(5px) !important; }
+    .opt-btn:active { transform: scale(0.98) !important; }
+
+    /* ── PRIMARY BTN HOVER ── */
+    .btn-primary { transition: transform 0.22s cubic-bezier(0.16,1,0.3,1), box-shadow 0.22s !important; }
+    .btn-primary:hover { transform: translateY(-2px) !important; box-shadow: 0 12px 36px rgba(99,102,241,0.5) !important; }
+    .btn-primary:active { transform: scale(0.97) !important; }
+
+    /* ── CARD HOVER ── */
+    .card-hover { transition: transform 0.22s, box-shadow 0.22s !important; }
+    .card-hover:hover { transform: translateY(-3px) !important; }
+
+    /* ── SELECT CUSTOM ── */
+    select {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    /* ── MOBILE ── */
+    @media (max-width: 600px) {
+      .hide-sm { display: none !important; }
+      .grid-2col { grid-template-columns: 1fr !important; }
+      .stats-4col { grid-template-columns: 1fr 1fr !important; }
+    }
+
+    /* ── Loading screen before React mounts ── */
+    #loading-screen {
+      position: fixed; inset: 0; z-index: 99999;
+      background: #07080F;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 18px;
+      transition: opacity 0.5s, visibility 0.5s;
+    }
+    #loading-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    #loading-screen .brain  { font-size: 56px; animation: pulse 1.5s ease infinite; }
+    #loading-screen .ring   { width: 44px; height: 44px; border-radius: 50%; border: 3px solid rgba(99,102,241,0.2); border-top-color: #6366F1; animation: spin 0.8s linear infinite; }
+    #loading-screen p       { font-size: 0.82rem; color: #4A4B80; font-weight: 600; }
+
+    /* ── Gradient text utility ── */
+    .grad-text {
+      background: linear-gradient(125deg, #818CF8 0%, #F43F5E 55%, #F59E0B 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradMove 4s ease infinite;
+    }
+
+    /* ── Timer warning animation ── */
+    .timer-warn { animation: timerWarn 0.6s ease infinite !important; }
+  </style>
+</head>
+<body>
+
+<!-- Loading splash (before React hydrates) -->
+<div id="loading-screen">
+  <div class="brain">🧠</div>
+  <div class="ring"></div>
+  <p>Loading QuizAI…</p>
+</div>
+
+<div id="root"></div>
+
+<!-- React + Babel -->
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.4/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+// ═══════════════════════════════════════════════════════════════
+// QuizAI — Complete AI-Powered Quiz Platform
+// Powered by Claude API (claude-sonnet-4)
+// Supports: PDF, DOCX, TXT, Images | Hindi + English | Dark/Light
+// ═══════════════════════════════════════════════════════════════
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── TRANSLATIONS ─────────────────────────────────────────────
+const T = {
+  en: {
+    tagline: "Transform any document into a powerful quiz",
+    uploadTitle: "Drop your file here",
+    uploadSub: "PDF, DOCX, TXT, Images — up to 20MB",
+    uploadBtn: "Browse Files",
+    orDrag: "or drag & drop",
+    settingsTitle: "Quiz Settings",
+    numQ: "Questions",
+    difficulty: "Difficulty",
+    quizLang: "Language",
+    timerLabel: "Timer / Question",
+    topicLabel: "Focus Topic",
+    topicPH: "e.g. Photosynthesis, History of India, React Hooks…",
+    generateBtn: "✨ Generate Quiz",
+    generating: "Generating…",
+    noTimer: "No Timer",
+    s30:"30s", s60:"1 min", s90:"90s",
+    easy:"Easy", medium:"Medium", hard:"Hard", mixed:"Mixed",
+    qOf: "Question", of: "of",
+    skip:"Skip", prev:"← Prev", next:"Next →", submit:"Submit Quiz ✓",
+    bookmark:"Bookmark", bookmarked:"Bookmarked ✓",
+    listen:"🔊 Listen",
+    explanation:"Explanation",
+    complete:"Quiz Complete!",
+    score:"Your Score",
+    correct:"Correct", wrong:"Wrong", skipped:"Skipped", accuracy:"Accuracy",
+    review:"Review Answers", retry:"Try Again", newQuiz:"New Quiz",
+    msg100:"Perfection! You're a genius! 🏆",
+    msg80:"Outstanding performance! 🌟",
+    msg60:"Good job! Keep it up 💪",
+    msg40:"Decent effort, keep studying 📖",
+    msg0:"Keep going, every attempt counts 📚",
+    reviewTitle:"Answer Review",
+    all:"All", correctF:"Correct", wrongF:"Wrong", skippedF:"Skipped",
+    pt1:"Reading your document…", pt2:"Analyzing key concepts…",
+    pt3:"Crafting smart questions…", pt4:"Writing AI explanations…",
+    pt5:"Polishing your quiz…",
+    aiTitle:"AI is working…",
+    errorRetry:"Try Again",
+    shuffleQ:"Shuffle Questions", shuffleO:"Shuffle Options",
+    showAfter:"Show Answer After Each",
+    fileReady:"File ready",
+    change:"Change",
+    noQuestions:"No questions match this filter",
+    bookmarkNote:"Bookmarked questions",
+    topicHint:"Leave blank to auto-detect topics",
+    supportedFormats: "Supported: PDF, DOCX, DOC, TXT, MD, PNG, JPG, WEBP, GIF, CSV",
+  },
+  hi: {
+    tagline: "किसी भी दस्तावेज़ को शक्तिशाली क्विज़ में बदलें",
+    uploadTitle: "यहाँ फ़ाइल छोड़ें",
+    uploadSub: "PDF, DOCX, TXT, Images — 20MB तक",
+    uploadBtn: "फ़ाइल चुनें",
+    orDrag: "या यहाँ खींचें",
+    settingsTitle: "क्विज़ सेटिंग्स",
+    numQ: "प्रश्न",
+    difficulty: "कठिनाई",
+    quizLang: "भाषा",
+    timerLabel: "समय / प्रश्न",
+    topicLabel: "विषय",
+    topicPH: "जैसे: प्रकाश संश्लेषण, भारत का इतिहास…",
+    generateBtn: "✨ क्विज़ बनाएं",
+    generating: "बन रहा है…",
+    noTimer: "कोई टाइमर नहीं",
+    s30:"30 सेकंड", s60:"1 मिनट", s90:"90 सेकंड",
+    easy:"आसान", medium:"मध्यम", hard:"कठिन", mixed:"मिश्रित",
+    qOf: "प्रश्न", of: "में से",
+    skip:"छोड़ें", prev:"← पिछला", next:"अगला →", submit:"क्विज़ जमा करें ✓",
+    bookmark:"बुकमार्क", bookmarked:"बुकमार्क ✓",
+    listen:"🔊 सुनें",
+    explanation:"व्याख्या",
+    complete:"क्विज़ पूरा!",
+    score:"आपका स्कोर",
+    correct:"सही", wrong:"गलत", skipped:"छोड़ा", accuracy:"सटीकता",
+    review:"उत्तर देखें", retry:"फिर कोशिश", newQuiz:"नई क्विज़",
+    msg100:"परफेक्ट! आप जीनियस हैं! 🏆",
+    msg80:"शानदार प्रदर्शन! 🌟",
+    msg60:"बहुत अच्छा! जारी रखें 💪",
+    msg40:"ठीक-ठाक, और पढ़ें 📖",
+    msg0:"कोशिश जारी रखें 📚",
+    reviewTitle:"उत्तर समीक्षा",
+    all:"सभी", correctF:"सही", wrongF:"गलत", skippedF:"छोड़े",
+    pt1:"दस्तावेज़ पढ़ रहा है…", pt2:"मुख्य विषय खोज रहा है…",
+    pt3:"स्मार्ट प्रश्न बना रहा है…", pt4:"AI व्याख्या लिख रहा है…",
+    pt5:"क्विज़ तैयार कर रहा है…",
+    aiTitle:"AI काम कर रहा है…",
+    errorRetry:"फिर कोशिश करें",
+    shuffleQ:"प्रश्न मिलाएं", shuffleO:"विकल्प मिलाएं",
+    showAfter:"हर प्रश्न के बाद उत्तर दिखाएं",
+    fileReady:"फ़ाइल तैयार",
+    change:"बदलें",
+    noQuestions:"कोई प्रश्न नहीं",
+    bookmarkNote:"बुकमार्क किए प्रश्न",
+    topicHint:"खाली रखें तो AI खुद विषय चुनेगा",
+    supportedFormats: "समर्थित: PDF, DOCX, TXT, PNG, JPG, WEBP, CSV",
+  }
+};
+
+// ─── HELPERS ──────────────────────────────────────────────────
+
+const shuffle = arr => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
+const grade = pct =>
+  pct >= 90 ? {label:"A+", color:"#10B981"} :
+  pct >= 80 ? {label:"A",  color:"#10B981"} :
+  pct >= 70 ? {label:"B+", color:"#6366F1"} :
+  pct >= 60 ? {label:"B",  color:"#6366F1"} :
+  pct >= 50 ? {label:"C",  color:"#F59E0B"} :
+              {label:"D",  color:"#F43F5E"};
+
+const resultMsg = (pct, t) =>
+  pct === 100 ? t.msg100 :
+  pct >= 80   ? t.msg80 :
+  pct >= 60   ? t.msg60 :
+  pct >= 40   ? t.msg40 : t.msg0;
+
+function speak(text, lang) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === "hi" ? "hi-IN" : "en-US";
+  u.rate = 0.9;
+  window.speechSynthesis.speak(u);
+}
+
+function fmtTime(secs) {
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+// ─── THEME ────────────────────────────────────────────────────
+
+const DARK = {
+  bg:"#07080F", card:"#0F1120", card2:"#161830", input:"#0C0D1E",
+  b1:"rgba(99,102,241,0.18)", b2:"rgba(99,102,241,0.10)", b3:"rgba(255,255,255,0.04)",
+  t1:"#F0F1FF", t2:"#9899CC", t3:"#4A4B80",
+  nav:"rgba(7,8,15,0.88)", shadow:"0 8px 40px rgba(0,0,0,0.5)",
+};
+const LIGHT = {
+  bg:"#F5F6FF", card:"#FFFFFF", card2:"#EEF0FF", input:"#FFFFFF",
+  b1:"rgba(99,102,241,0.14)", b2:"rgba(99,102,241,0.08)", b3:"rgba(0,0,0,0.04)",
+  t1:"#0B0C2A", t2:"#3D3E7A", t3:"#9090C0",
+  nav:"rgba(245,246,255,0.92)", shadow:"0 4px 24px rgba(99,102,241,0.10)",
+};
+
+// ─── API CALLS ────────────────────────────────────────────────
+
+async function callClaude(messages, maxTokens = 6000) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: maxTokens,
+      messages,
+    })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || `API error ${res.status}`);
+  }
+  const d = await res.json();
+  return d.content?.map(c => c.text || "").join("") || "";
+}
+
+async function extractText(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+
+  // Plain text formats
+  if (["txt","md","csv","json","xml","html","htm"].includes(ext)) {
+    return file.text();
+  }
+
+  // DOCX — parse XML
+  if (["docx","doc"].includes(ext)) {
+    try {
+      const ab = await file.arrayBuffer();
+      const bytes = new Uint8Array(ab);
+      const dec = new TextDecoder("utf-8", { fatal: false });
+      const raw = dec.decode(bytes);
+      const matches = [...raw.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
+      const text = matches.map(m => m[1]).join(" ").replace(/\s+/g," ").trim();
+      if (text.length > 200) return text;
+    } catch {}
+    // Fallback to vision
+    return extractVision(file);
+  }
+
+  // PDF or images — use Claude vision
+  return extractVision(file);
+}
+
+async function extractVision(file) {
+  const b64 = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(",")[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+
+  const isPdf = file.name.toLowerCase().endsWith(".pdf");
+  const mtype = isPdf ? "application/pdf" : (file.type || "image/jpeg");
+
+  const content = [
+    {
+      type: isPdf ? "document" : "image",
+      source: { type: "base64", media_type: mtype, data: b64 }
+    },
+    { type:"text", text:"Extract ALL readable text from this document. Return only the raw text, preserving paragraphs. Do not summarize." }
+  ];
+
+  return callClaude([{ role:"user", content }], 4096);
+}
+
+async function generateQuiz(text, cfg) {
+  const { numQ, difficulty, lang, topic, shuffleOpts } = cfg;
+
+  const langNote = lang === "hi"
+    ? "Generate ALL questions, options, and explanations in Hindi (Devanagari)."
+    : "Generate everything in English.";
+
+  const topicNote = topic?.trim()
+    ? `Focus only on: "${topic}".`
+    : "Auto-detect and cover the most important topics.";
+
+  const diffMap = {
+    easy:"simple recall & basic comprehension",
+    medium:"application & understanding",
+    hard:"analysis, synthesis & evaluation",
+    mixed:"variety: ~25% easy, 50% medium, 25% hard",
+  };
+
+  const prompt = `You are an expert educator. Create a premium-quality quiz from the document below.
+
+${langNote}
+${topicNote}
+Difficulty: ${diffMap[difficulty] || diffMap.mixed}
+
+DOCUMENT:
+"""
+${text.slice(0, 14000)}
+"""
+
+Generate EXACTLY ${numQ} high-quality MCQ questions.
+
+Return ONLY a valid JSON object — no markdown, no backticks, no preamble:
+{
+  "title": "concise descriptive title (5-8 words)",
+  "topics": ["topic1","topic2"],
+  "questions": [
+    {
+      "id": 1,
+      "question": "clear question text",
+      "options": ["option A","option B","option C","option D"],
+      "correct": 0,
+      "explanation": "2-4 sentence explanation of why the answer is correct and others are wrong. Reference the document.",
+      "difficulty": "easy|medium|hard",
+      "topic": "sub-topic"
+    }
+  ]
+}
+
+Quality rules:
+• "correct" = 0-based index into "options" array
+• Exactly 4 options per question, all plausible
+• No trivial or trick questions
+• Explanations must educate, not just restate
+• No duplicate questions`;
+
+  const raw  = await callClaude([{ role:"user", content:prompt }], 8000);
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) throw new Error("AI returned unexpected format");
+
+  const data = JSON.parse(json);
+  if (!Array.isArray(data.questions) || !data.questions.length)
+    throw new Error("No questions generated. Try a different file or topic.");
+
+  // Optionally shuffle options
+  if (shuffleOpts) {
+    data.questions = data.questions.map(q => {
+      const correctText = q.options[q.correct];
+      const opts = shuffle(q.options);
+      return { ...q, options: opts, correct: opts.indexOf(correctText) };
+    });
+  }
+
+  return data;
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────
+
+function App() {
+  const [dark,  setDark]  = useState(true);
+  const [lang,  setLang]  = useState("en");
+  const [phase, setPhase] = useState("upload");
+  const [file,  setFile]  = useState(null);
+  const [drag,  setDrag]  = useState(false);
+  const [err,   setErr]   = useState(null);
+  const [pStep, setPStep] = useState(0);
+
+  const [cfg, setCfg] = useState({
+    numQ: 10, difficulty: "mixed", lang: "en",
+    topic: "", timerSecs: 0,
+    shuffleQ: false, shuffleOpts: true, showAfter: true,
+  });
+
+  // Quiz runtime
+  const [quiz,   setQuiz]   = useState(null);
+  const [qIdx,   setQIdx]   = useState(0);
+  const [ans,    setAns]    = useState([]);
+  const [expl,   setExpl]   = useState(false);
+  const [bmarks, setBmarks] = useState(new Set());
+  const [tLeft,  setTLeft]  = useState(0);
+  const [rfilt,  setRfilt]  = useState("all");
+  const [startT, setStartT] = useState(0);
+  const [elapsed,setElapsed]= useState(0);
+
+  const timerRef = useRef(null);
+  const fileRef  = useRef(null);
+
+  const t   = T[lang];
+  const css = dark ? DARK : LIGHT;
+
+  // Hide loading screen once mounted
+  useEffect(() => {
+    const el = document.getElementById("loading-screen");
+    if (el) el.classList.add("hidden");
+  }, []);
+
+  // ── TIMER ──
+  useEffect(() => {
+    clearInterval(timerRef.current);
+    if (phase !== "quiz" || !cfg.timerSecs || expl) return;
+    setTLeft(cfg.timerSecs);
+    timerRef.current = setInterval(() => {
+      setTLeft(p => {
+        if (p <= 1) { clearInterval(timerRef.current); doSkip(); return 0; }
+        return p - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [qIdx, phase, expl]);
+
+  const stopTimer = () => clearInterval(timerRef.current);
+
+  // Elapsed timer
+  useEffect(() => {
+    let id;
+    if (phase === "quiz") {
+      if (!startT) setStartT(Date.now());
+      id = setInterval(() => setElapsed(Math.floor((Date.now() - (startT || Date.now())) / 1000)), 1000);
+    }
+    return () => clearInterval(id);
+  }, [phase]);
+
+  // ── FILE ──
+  const pickFile = f => {
+    if (!f) return;
+    if (f.size > 20 * 1024 * 1024) { setErr("File too large (max 20MB)"); return; }
+    setFile(f); setErr(null);
+  };
+
+  const onDrop = e => {
+    e.preventDefault(); setDrag(false);
+    pickFile(e.dataTransfer.files[0]);
+  };
+
+  // ── GENERATE ──
+  const generate = async () => {
+    if (!file) return;
+    setPhase("processing"); setErr(null); setPStep(0);
+    const steps = [t.pt1, t.pt2, t.pt3, t.pt4, t.pt5];
+    let si = 0;
+    const tick = setInterval(() => { si = Math.min(si + 1, 4); setPStep(si); }, 1100);
+    try {
+      const text = await extractText(file);
+      if (!text || text.length < 60)
+        throw new Error("Could not extract enough text. Try a different file.");
+
+      const data = await generateQuiz(text, { ...cfg, numQ: cfg.numQ });
+      clearInterval(tick);
+
+      const qs = cfg.shuffleQ ? shuffle(data.questions) : data.questions;
+      setQuiz({ ...data, questions: qs });
+      setAns(qs.map(() => ({ sel: null, ok: false, skip: false })));
+      setQIdx(0); setExpl(false); setStartT(Date.now());
+      setPhase("quiz");
+    } catch (e) {
+      clearInterval(tick);
+      setErr(e.message || "Generation failed. Please try again.");
+      setPhase("upload");
+    }
+  };
+
+  // ── QUIZ ACTIONS ──
+  const select = idx => {
+    if (expl && cfg.showAfter) return;
+    stopTimer();
+    const correct = idx === quiz.questions[qIdx].correct;
+    setAns(p => { const n=[...p]; n[qIdx]={sel:idx,ok:correct,skip:false}; return n; });
+    if (cfg.showAfter) setExpl(true);
+  };
+
+  const doSkip = useCallback(() => {
+    stopTimer();
+    setAns(p => { const n=[...p]; if(n[qIdx].sel===null) n[qIdx]={sel:null,ok:false,skip:true}; return n; });
+    advance();
+  }, [qIdx]);
+
+  const advance = () => {
+    setExpl(false);
+    setQIdx(i => {
+      if (i < (quiz?.questions.length ?? 1) - 1) return i + 1;
+      setPhase("results");
+      return i;
+    });
+  };
+
+  const back = () => {
+    stopTimer();
+    if (qIdx > 0) {
+      setQIdx(i => i - 1);
+      setExpl(cfg.showAfter && ans[qIdx - 1]?.sel !== null);
+    }
+  };
+
+  const submit = () => { stopTimer(); setPhase("results"); };
+  const toggleBmark = i => setBmarks(p => { const n=new Set(p); n.has(i)?n.delete(i):n.add(i); return n; });
+
+  // ── RESULTS ──
+  const nCorrect = ans.filter(a=>a.ok).length;
+  const nWrong   = ans.filter(a=>!a.ok&&!a.skip&&a.sel!==null).length;
+  const nSkipped = ans.filter(a=>a.skip||a.sel===null).length;
+  const total    = quiz?.questions.length || 1;
+  const pct      = Math.round(nCorrect / total * 100);
+  const G        = grade(pct);
+
+  const filtered = quiz?.questions.filter((_,i) => {
+    const a = ans[i];
+    if (rfilt==="correct") return a?.ok;
+    if (rfilt==="wrong")   return !a?.ok && !a?.skip && a?.sel!==null;
+    if (rfilt==="skipped") return a?.skip || a?.sel===null;
+    return true;
+  }) ?? [];
+
+  // ─────────────────────────────────────────────────────────────
+  // RENDER HELPERS
+  // ─────────────────────────────────────────────────────────────
+
+  const Card = ({ children, style={}, className="" }) => (
+    <div className={`card-hover ${className}`} style={{
+      background:css.card, border:`1px solid ${css.b1}`,
+      borderRadius:20, boxShadow:css.shadow,
+      ...style,
+    }}>{children}</div>
+  );
+
+  const Pill = ({ label, active, color="#6366F1", onClick }) => (
+    <button onClick={onClick} style={{
+      padding:"5px 14px", borderRadius:99, fontSize:"0.75rem", fontWeight:700,
+      background: active ? color : "transparent",
+      border:`1.5px solid ${active ? color : css.b1}`,
+      color: active ? "#fff" : css.t3, cursor:"pointer",
+      transition:"all 0.18s",
+    }}>{label}</button>
+  );
+
+  const Toggle = ({ label, val, onChange }) => (
+    <button onClick={()=>onChange(!val)} style={{
+      display:"flex", alignItems:"center", gap:8, padding:"7px 15px", borderRadius:99,
+      border:`1.5px solid ${val?"#6366F1":css.b1}`,
+      background: val?"rgba(99,102,241,0.12)":"transparent",
+      color: val?"#818CF8":css.t3, fontSize:"0.78rem", fontWeight:700, cursor:"pointer",
+      transition:"all 0.18s",
+    }}>
+      <div style={{
+        width:17, height:17, borderRadius:"50%",
+        border:`2px solid ${val?"#6366F1":css.t3}`,
+        background: val?"#6366F1":"transparent",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        transition:"all 0.18s", flexShrink:0,
+      }}>
+        {val && <div style={{width:7,height:7,borderRadius:"50%",background:"#fff"}}/>}
+      </div>
+      {label}
+    </button>
+  );
+
+  const Sel = ({ val, onChange, children }) => (
+    <select value={val} onChange={e=>onChange(e.target.value)} style={{
+      width:"100%", padding:"10px 36px 10px 13px", borderRadius:11,
+      border:`1.5px solid ${css.b1}`, background:css.input,
+      color:css.t1, fontSize:"0.875rem", fontWeight:600, outline:"none",
+      backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23818CF8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`,
+      backgroundRepeat:"no-repeat", backgroundPosition:"right 12px center",
+      transition:"border-color 0.15s, box-shadow 0.15s",
+    }}>
+      {children}
+    </select>
+  );
+
+  const Label = ({ children }) => (
+    <div style={{fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",color:css.t3,marginBottom:7}}>
+      {children}
+    </div>
+  );
+
+  // ─────────────────────────────────────────────────────────────
+  // PHASES
+  // ─────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{minHeight:"100vh",background:css.bg,color:css.t1,transition:"background 0.4s,color 0.4s"}}>
+
+      {/* ── NAVBAR ── */}
+      <nav style={{
+        position:"fixed",top:0,left:0,right:0,zIndex:1000,
+        height:60,display:"flex",alignItems:"center",
+        padding:"0 clamp(16px,4vw,32px)", gap:12,
+        background:css.nav, backdropFilter:"blur(24px)",
+        borderBottom:`1px solid ${css.b2}`,
+      }}>
+        <div style={{display:"flex",alignItems:"center",gap:9,flex:1}}>
+          <div style={{
+            width:35,height:35,borderRadius:10,flexShrink:0,
+            background:"linear-gradient(135deg,#6366F1,#8B5CF6)",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:18,boxShadow:"0 4px 14px rgba(99,102,241,0.4)",
+          }}>🧠</div>
+          <span style={{fontSize:"1.05rem",fontWeight:800,letterSpacing:"-0.03em"}}>QuizAI</span>
+          {quiz && phase!=="upload" && (
+            <span className="hide-sm" style={{
+              fontSize:"0.7rem",fontWeight:700,color:"#818CF8",letterSpacing:"0.06em",textTransform:"uppercase",
+              background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.22)",
+              padding:"3px 10px",borderRadius:99,marginLeft:6,
+            }}>{quiz.title}</span>
+          )}
+        </div>
+
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {/* Phase indicator */}
+          {phase==="quiz" && quiz && (
+            <span className="hide-sm" style={{fontSize:"0.78rem",fontWeight:700,color:css.t3}}>
+              {qIdx+1}/{quiz.questions.length} · {fmtTime(elapsed)}
+            </span>
+          )}
+          {/* Lang */}
+          <button onClick={()=>setLang(l=>l==="en"?"hi":"en")} style={{
+            padding:"5px 13px",borderRadius:99,fontSize:"0.75rem",fontWeight:700,
+            background:"rgba(99,102,241,0.10)",border:"1px solid rgba(99,102,241,0.22)",
+            color:"#818CF8",cursor:"pointer",
+          }}>
+            {lang==="en"?"🇮🇳 हिंदी":"🇬🇧 English"}
+          </button>
+          {/* Theme */}
+          <button onClick={()=>setDark(d=>!d)} style={{
+            width:36,height:36,borderRadius:9,
+            border:`1px solid ${css.b1}`,background:css.card,
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,
+            cursor:"pointer",color:css.t2,transition:"border-color 0.15s",
+          }}>{dark?"☀️":"🌙"}</button>
+        </div>
+      </nav>
+
+      {/* ═══════════════════════════════════════════════════════
+          UPLOAD PHASE
+      ═══════════════════════════════════════════════════════ */}
+      {phase==="upload" && (
+        <div style={{maxWidth:820,margin:"0 auto",padding:"clamp(32px,6vw,64px) clamp(16px,4vw,32px)",paddingTop:"calc(60px + clamp(32px,5vw,56px))"}}>
+
+          {/* Hero */}
+          <div className="fade-up" style={{textAlign:"center",marginBottom:44}}>
+            <div style={{
+              display:"inline-flex",alignItems:"center",gap:7,
+              fontSize:"0.7rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",
+              color:"#818CF8",background:"rgba(99,102,241,0.10)",border:"1px solid rgba(99,102,241,0.22)",
+              padding:"5px 14px",borderRadius:99,marginBottom:18,
+            }}>✨ AI-Powered · Claude Sonnet</div>
+
+            <h1 style={{
+              fontSize:"clamp(1.9rem,5.5vw,3.4rem)",fontWeight:800,
+              letterSpacing:"-0.03em",lineHeight:1.12,marginBottom:14,
+            }}>
+              <span style={{display:"block"}}>Transform any document</span>
+              <span className="grad-text">into a smart quiz</span>
+            </h1>
+
+            <p style={{fontSize:"1rem",color:css.t2,maxWidth:460,margin:"0 auto 28px"}}>
+              {t.tagline}
+            </p>
+
+            {/* Feature chips */}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+              {["📄 PDF & DOCX","🖼️ Images","📝 Text","🧠 AI Questions","💡 Explanations","⏱️ Timer","🌐 Hindi/English","🔖 Bookmarks"].map(f=>(
+                <span key={f} style={{
+                  fontSize:"0.72rem",fontWeight:600,color:css.t3,
+                  background:css.card,border:`1px solid ${css.b2}`,
+                  padding:"4px 12px",borderRadius:99,
+                }}>{f}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Drop zone */}
+          <div
+            className="fade-up delay-1"
+            onDragOver={e=>{e.preventDefault();setDrag(true)}}
+            onDragLeave={()=>setDrag(false)}
+            onDrop={onDrop}
+            onClick={()=>fileRef.current?.click()}
+            style={{
+              border:`2px dashed ${drag?"#6366F1":file?"#10B981":css.b1}`,
+              borderRadius:20,
+              padding:"clamp(32px,5vw,52px) 24px",
+              textAlign:"center",cursor:"pointer",
+              background:drag?"rgba(99,102,241,0.06)":file?"rgba(16,185,129,0.04)":css.card,
+              transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",
+              boxShadow:css.shadow,
+              marginBottom:16,
+            }}
+          >
+            <input ref={fileRef} type="file" style={{display:"none"}}
+              accept=".pdf,.docx,.doc,.txt,.md,.png,.jpg,.jpeg,.webp,.gif,.csv,.json"
+              onChange={e=>pickFile(e.target.files[0])}
+            />
+            <div style={{fontSize:52,marginBottom:12}}>
+              {drag?"📂":file?"✅":"📄"}
+            </div>
+            <h3 style={{fontSize:"1.1rem",fontWeight:800,letterSpacing:"-0.02em",marginBottom:7}}>
+              {file ? `${t.fileReady}: ${file.name}` : t.uploadTitle}
+            </h3>
+            <p style={{fontSize:"0.8rem",color:css.t3,marginBottom:18}}>
+              {file
+                ? `${(file.size/1024/1024).toFixed(2)} MB · Click to ${t.change.toLowerCase()}`
+                : t.uploadSub}
+            </p>
+            <div style={{display:"flex",gap:10,justifyContent:"center",alignItems:"center",flexWrap:"wrap"}}>
+              <button onClick={e=>{e.stopPropagation();fileRef.current?.click()}} style={{
+                padding:"9px 22px",borderRadius:99,fontSize:"0.82rem",fontWeight:700,
+                background:file?"rgba(16,185,129,0.12)":"rgba(99,102,241,0.12)",
+                border:`1px solid ${file?"rgba(16,185,129,0.3)":"rgba(99,102,241,0.25)"}`,
+                color:file?"#10B981":"#818CF8",cursor:"pointer",
+              }}>{file?t.change:t.uploadBtn}</button>
+              <span style={{fontSize:"0.78rem",color:css.t3}}>{t.orDrag}</span>
+            </div>
+          </div>
+
+          {err && (
+            <div className="fade-in" style={{
+              padding:"12px 16px",borderRadius:12,marginBottom:14,
+              background:"rgba(244,63,94,0.09)",border:"1px solid rgba(244,63,94,0.25)",
+              color:"#F43F5E",fontSize:"0.875rem",fontWeight:600,
+            }}>⚠️ {err}</div>
+          )}
+
+          {/* Settings card */}
+          <Card className="fade-up delay-2" style={{padding:"clamp(20px,3vw,32px)"}}>
+            <h2 style={{fontSize:"0.95rem",fontWeight:800,letterSpacing:"-0.01em",marginBottom:22}}>
+              ⚙️ {t.settingsTitle}
+            </h2>
+
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:16,marginBottom:18}} className="grid-2col">
+              <div>
+                <Label>{t.numQ}</Label>
+                <Sel val={cfg.numQ} onChange={v=>setCfg(c=>({...c,numQ:+v}))}>
+                  {[5,8,10,12,15,20].map(n=><option key={n} value={n}>{n} Questions</option>)}
+                </Sel>
+              </div>
+              <div>
+                <Label>{t.difficulty}</Label>
+                <Sel val={cfg.difficulty} onChange={v=>setCfg(c=>({...c,difficulty:v}))}>
+                  <option value="mixed">{t.mixed}</option>
+                  <option value="easy">{t.easy}</option>
+                  <option value="medium">{t.medium}</option>
+                  <option value="hard">{t.hard}</option>
+                </Sel>
+              </div>
+              <div>
+                <Label>{t.quizLang}</Label>
+                <Sel val={cfg.lang} onChange={v=>setCfg(c=>({...c,lang:v}))}>
+                  <option value="en">English 🇬🇧</option>
+                  <option value="hi">हिंदी 🇮🇳</option>
+                </Sel>
+              </div>
+              <div>
+                <Label>{t.timerLabel}</Label>
+                <Sel val={cfg.timerSecs} onChange={v=>setCfg(c=>({...c,timerSecs:+v}))}>
+                  <option value={0}>{t.noTimer}</option>
+                  <option value={30}>{t.s30}</option>
+                  <option value={60}>{t.s60}</option>
+                  <option value={90}>{t.s90}</option>
+                </Sel>
+              </div>
+            </div>
+
+            {/* Topic */}
+            <div style={{marginBottom:18}}>
+              <Label>{t.topicLabel}</Label>
+              <input
+                type="text" value={cfg.topic}
+                onChange={e=>setCfg(c=>({...c,topic:e.target.value}))}
+                placeholder={t.topicPH}
+                style={{
+                  width:"100%",padding:"10px 13px",borderRadius:11,
+                  border:`1.5px solid ${css.b1}`,background:css.input,
+                  color:css.t1,fontSize:"0.875rem",outline:"none",
+                  transition:"border-color 0.15s",fontFamily:"inherit",
+                }}
+              />
+              <p style={{fontSize:"0.72rem",color:css.t3,marginTop:5}}>{t.topicHint}</p>
+            </div>
+
+            {/* Toggles */}
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:24}}>
+              <Toggle label={t.shuffleQ}   val={cfg.shuffleQ}   onChange={v=>setCfg(c=>({...c,shuffleQ:v}))} />
+              <Toggle label={t.shuffleO}   val={cfg.shuffleOpts}onChange={v=>setCfg(c=>({...c,shuffleOpts:v}))} />
+              <Toggle label={t.showAfter}  val={cfg.showAfter}  onChange={v=>setCfg(c=>({...c,showAfter:v}))} />
+            </div>
+
+            {/* Generate button */}
+            <button
+              className="btn-primary"
+              onClick={generate}
+              disabled={!file}
+              style={{
+                width:"100%",padding:"16px 24px",borderRadius:99,
+                fontSize:"1rem",fontWeight:800,letterSpacing:"-0.01em",
+                background:file?"linear-gradient(135deg,#6366F1,#8B5CF6)":css.card2,
+                border:"none",color:file?"#fff":css.t3,
+                boxShadow:file?"0 8px 28px rgba(99,102,241,0.38)":"none",
+                cursor:file?"pointer":"not-allowed",
+              }}
+            >
+              {t.generateBtn}
+            </button>
+
+            <p style={{textAlign:"center",fontSize:"0.72rem",color:css.t3,marginTop:12}}>
+              {t.supportedFormats}
+            </p>
+          </Card>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          PROCESSING PHASE
+      ═══════════════════════════════════════════════════════ */}
+      {phase==="processing" && (
+        <div style={{
+          display:"flex",alignItems:"center",justifyContent:"center",
+          minHeight:"100vh",padding:"20px",
+        }}>
+          <div className="scale-in" style={{
+            background:css.card,border:`1px solid ${css.b1}`,
+            borderRadius:24,padding:"48px clamp(28px,5vw,56px)",
+            textAlign:"center",maxWidth:400,width:"100%",
+            boxShadow:css.shadow,
+          }}>
+            <div style={{fontSize:56,marginBottom:16}} className="pulse">🧠</div>
+            <h2 style={{fontSize:"1.25rem",fontWeight:800,letterSpacing:"-0.02em",marginBottom:10}}>
+              {t.aiTitle}
+            </h2>
+            <p style={{fontSize:"0.875rem",color:css.t2,marginBottom:28,minHeight:22}}>
+              {[t.pt1,t.pt2,t.pt3,t.pt4,t.pt5][pStep]}
+            </p>
+            {/* Ring spinner */}
+            <div style={{
+              width:48,height:48,borderRadius:"50%",
+              border:`3px solid ${css.b2}`,borderTopColor:"#6366F1",
+              animation:"spin 0.85s linear infinite",
+              margin:"0 auto 28px",
+            }} className="spin"/>
+            {/* Step dots */}
+            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+              {[0,1,2,3,4].map(i=>(
+                <div key={i} style={{
+                  width:i===pStep?20:8,height:8,borderRadius:4,
+                  background:i<=pStep?"#6366F1":css.b2,
+                  transition:"all 0.4s cubic-bezier(0.34,1.56,0.64,1)",
+                }}/>
+              ))}
+            </div>
+            {/* Cancel */}
+            <button onClick={()=>setPhase("upload")} style={{
+              marginTop:24,padding:"7px 18px",borderRadius:99,fontSize:"0.78rem",fontWeight:700,
+              border:`1px solid ${css.b1}`,background:"transparent",color:css.t3,cursor:"pointer",
+            }}>✕ Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          QUIZ PHASE
+      ═══════════════════════════════════════════════════════ */}
+      {phase==="quiz" && quiz && (
+        <div style={{maxWidth:700,margin:"0 auto",padding:"calc(60px + 20px) clamp(16px,4vw,32px) 80px"}}>
+
+          {/* Top meta */}
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+            {/* Q counter */}
+            <span style={{fontSize:"0.82rem",fontWeight:700,color:css.t3}}>
+              <span style={{color:css.t1,fontWeight:800}}>{t.qOf} {qIdx+1}</span> {t.of} {quiz.questions.length}
+            </span>
+
+            {/* Dot trail */}
+            <div style={{display:"flex",gap:4,flex:1,justifyContent:"center",flexWrap:"wrap",maxWidth:260}}>
+              {quiz.questions.map((_,i)=>{
+                const a=ans[i];
+                const isAct=i===qIdx;
+                const col=isAct?"#6366F1":a?.ok?"#10B981":a?.sel!==null?"#F43F5E":a?.skip?"#F59E0B":css.b1;
+                return (
+                  <div key={i} onClick={()=>{stopTimer();setQIdx(i);setExpl(cfg.showAfter&&ans[i]?.sel!==null)}} style={{
+                    width:isAct?20:8,height:8,borderRadius:4,
+                    background:col,cursor:"pointer",
+                    transition:"all 0.3s cubic-bezier(0.34,1.56,0.64,1)",
+                  }}/>
+                );
+              })}
+            </div>
+
+            {/* Timer */}
+            {cfg.timerSecs>0 && (
+              <div style={{
+                display:"flex",alignItems:"center",gap:6,
+                fontSize:"0.9rem",fontWeight:800,
+                color:tLeft<=10?"#F43F5E":tLeft<=cfg.timerSecs*0.4?"#F59E0B":"#10B981",
+              }} className={tLeft<=10?"timer-warn":""}>
+                ⏱️ {tLeft}s
+              </div>
+            )}
+
+            {/* Bookmark count */}
+            {bmarks.size>0 && (
+              <span style={{fontSize:"0.72rem",color:css.t3}}>🔖 {bmarks.size}</span>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          <div style={{height:3,background:css.b2,borderRadius:3,marginBottom:20,overflow:"hidden"}}>
+            <div style={{
+              height:"100%",borderRadius:3,
+              width:`${((qIdx+1)/quiz.questions.length)*100}%`,
+              background:"linear-gradient(90deg,#6366F1,#F43F5E)",
+              transition:"width 0.5s cubic-bezier(0.16,1,0.3,1)",
+            }}/>
+          </div>
+
+          {/* Question card */}
+          {quiz.questions[qIdx] && (
+            <div key={qIdx} className="fade-up" style={{
+              background:css.card,border:`1px solid ${css.b1}`,
+              borderRadius:20,padding:"clamp(18px,3vw,28px)",
+              marginBottom:12,boxShadow:css.shadow,
+              position:"relative",overflow:"hidden",
+            }}>
+              {/* Subtle top shine */}
+              <div style={{
+                position:"absolute",top:0,left:0,right:0,height:1,
+                background:"linear-gradient(90deg,transparent,rgba(255,255,255,0.07),transparent)",
+                pointerEvents:"none",
+              }}/>
+
+              {/* Q meta row */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                <span style={{fontSize:"0.68rem",fontWeight:800,color:"#818CF8",textTransform:"uppercase",letterSpacing:"0.1em"}}>
+                  Q{qIdx+1}
+                </span>
+                {quiz.questions[qIdx].difficulty && (
+                  <DiffBadge d={quiz.questions[qIdx].difficulty}/>
+                )}
+                {quiz.questions[qIdx].topic && (
+                  <span style={{
+                    fontSize:"0.68rem",fontWeight:600,color:css.t3,
+                    background:css.card2,border:`1px solid ${css.b2}`,
+                    padding:"2px 9px",borderRadius:99,
+                  }}>{quiz.questions[qIdx].topic}</span>
+                )}
+                <div style={{marginLeft:"auto",display:"flex",gap:7}}>
+                  <button onClick={()=>toggleBmark(qIdx)} style={{
+                    width:30,height:30,borderRadius:7,cursor:"pointer",
+                    border:`1px solid ${bmarks.has(qIdx)?"#F59E0B":css.b1}`,
+                    background:bmarks.has(qIdx)?"rgba(245,158,11,0.1)":"transparent",
+                    color:bmarks.has(qIdx)?"#F59E0B":css.t3,fontSize:"0.85rem",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    transition:"all 0.18s",
+                  }} title={t.bookmark}>🔖</button>
+                  <button onClick={()=>speak(quiz.questions[qIdx].question,cfg.lang)} style={{
+                    width:30,height:30,borderRadius:7,cursor:"pointer",
+                    border:`1px solid ${css.b1}`,background:"transparent",color:css.t3,fontSize:"0.85rem",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                  }} title={t.listen}>🔊</button>
+                </div>
+              </div>
+
+              <p style={{
+                fontSize:"clamp(0.94rem,2.2vw,1.08rem)",fontWeight:700,
+                lineHeight:1.6,letterSpacing:"-0.01em",color:css.t1,
+              }}>
+                {quiz.questions[qIdx].question}
+              </p>
+            </div>
+          )}
+
+          {/* Options */}
+          <div style={{display:"flex",flexDirection:"column",gap:9,marginBottom:12}}>
+            {quiz.questions[qIdx]?.options.map((opt,i)=>{
+              const a       = ans[qIdx];
+              const answered= a?.sel!==null;
+              const isSel   = a?.sel===i;
+              const isCorr  = i===quiz.questions[qIdx].correct;
+              const reveal  = expl||(answered&&!cfg.showAfter);
+
+              let bc=css.b1,bg=css.card2,tc=css.t2,lBg="transparent";
+              if(reveal){
+                if(isCorr){bc="#10B981";bg="rgba(16,185,129,0.09)";tc="#10B981";lBg="#10B981";}
+                else if(isSel){bc="#F43F5E";bg="rgba(244,63,94,0.09)";tc="#F43F5E";lBg="#F43F5E";}
+              } else if(isSel){bc="#6366F1";bg="rgba(99,102,241,0.10)";tc=css.t1;lBg="#6366F1";}
+
+              return (
+                <button key={i} className="opt-btn"
+                  disabled={answered&&cfg.showAfter}
+                  onClick={()=>select(i)}
+                  style={{
+                    display:"flex",alignItems:"center",gap:12,
+                    padding:"13px 16px",borderRadius:13,
+                    border:`1.5px solid ${bc}`,background:bg,
+                    cursor:(answered&&cfg.showAfter)?"default":"pointer",
+                    textAlign:"left",width:"100%",fontFamily:"inherit",
+                  }}
+                >
+                  <span style={{
+                    minWidth:30,height:30,borderRadius:8,flexShrink:0,
+                    border:`1.5px solid ${bc}`,
+                    background:(isSel&&!reveal)||( reveal&&isCorr)?lBg:"transparent",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:"0.77rem",fontWeight:800,
+                    color:(isSel&&!reveal)||(reveal&&isCorr)?"#fff":css.t2,
+                    transition:"all 0.18s",
+                  }}>{["A","B","C","D","E"][i]}</span>
+                  <span style={{flex:1,fontSize:"0.9rem",fontWeight:600,color:tc,lineHeight:1.45}}>
+                    {opt}
+                  </span>
+                  {reveal&&isCorr&&<span style={{fontSize:"1rem",flexShrink:0}}>✅</span>}
+                  {reveal&&isSel&&!isCorr&&<span style={{fontSize:"1rem",flexShrink:0}}>❌</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Explanation */}
+          {expl && quiz.questions[qIdx]?.explanation && (
+            <div className="fade-in" style={{
+              background:dark?"rgba(99,102,241,0.08)":"rgba(99,102,241,0.05)",
+              border:"1px solid rgba(99,102,241,0.22)",
+              borderRadius:13,padding:"14px 16px",marginBottom:12,
+            }}>
+              <div style={{fontSize:"0.68rem",fontWeight:700,color:"#818CF8",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>
+                💡 {t.explanation}
+              </div>
+              <p style={{fontSize:"0.875rem",color:css.t2,lineHeight:1.7}}>
+                {quiz.questions[qIdx].explanation}
+              </p>
+              <button onClick={()=>speak(quiz.questions[qIdx].explanation,cfg.lang)} style={{
+                marginTop:8,padding:"4px 11px",borderRadius:99,fontSize:"0.72rem",fontWeight:700,
+                border:"1px solid rgba(99,102,241,0.22)",background:"transparent",color:"#818CF8",cursor:"pointer",
+              }}>{t.listen}</button>
+            </div>
+          )}
+
+          {/* Nav */}
+          <div style={{display:"flex",gap:9,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={back} disabled={qIdx===0} style={{
+              padding:"9px 18px",borderRadius:99,fontSize:"0.82rem",fontWeight:700,
+              border:`1.5px solid ${css.b1}`,background:"transparent",color:css.t2,cursor:"pointer",
+              opacity:qIdx===0?0.35:1,
+            }}>{t.prev}</button>
+            <button onClick={()=>doSkip()} style={{
+              padding:"9px 18px",borderRadius:99,fontSize:"0.82rem",fontWeight:700,
+              border:`1.5px solid ${css.b1}`,background:"transparent",color:css.t3,cursor:"pointer",
+            }}>{t.skip}</button>
+            <div style={{flex:1}}/>
+            {qIdx<quiz.questions.length-1?(
+              <button className="btn-primary" onClick={advance} style={{
+                padding:"11px 26px",borderRadius:99,fontSize:"0.875rem",fontWeight:800,
+                background:"linear-gradient(135deg,#6366F1,#8B5CF6)",border:"none",color:"#fff",
+                boxShadow:"0 6px 22px rgba(99,102,241,0.38)",cursor:"pointer",
+              }}>{t.next}</button>
+            ):(
+              <button className="btn-primary" onClick={submit} style={{
+                padding:"11px 26px",borderRadius:99,fontSize:"0.875rem",fontWeight:800,
+                background:"linear-gradient(135deg,#10B981,#059669)",border:"none",color:"#fff",
+                boxShadow:"0 6px 22px rgba(16,185,129,0.38)",cursor:"pointer",
+              }}>{t.submit}</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          RESULTS PHASE
+      ═══════════════════════════════════════════════════════ */}
+      {phase==="results" && quiz && (
+        <div style={{maxWidth:720,margin:"0 auto",padding:"calc(60px + 20px) clamp(16px,4vw,32px) 80px"}}>
+
+          {/* Score hero */}
+          <div className="scale-in" style={{
+            background:css.card,border:`1px solid ${css.b1}`,
+            borderRadius:24,padding:"clamp(28px,4vw,48px) 24px",
+            textAlign:"center",marginBottom:14,boxShadow:css.shadow,
+            position:"relative",overflow:"hidden",
+          }}>
+            <div style={{
+              position:"absolute",inset:0,
+              background:"radial-gradient(ellipse at center,rgba(99,102,241,0.10),transparent 65%)",
+              pointerEvents:"none",
+            }}/>
+            <div style={{fontSize:54,marginBottom:10}}>
+              {pct>=80?"🏆":pct>=60?"🌟":pct>=40?"💪":"📚"}
+            </div>
+            <h2 style={{fontSize:"clamp(1.1rem,3vw,1.5rem)",fontWeight:800,letterSpacing:"-0.02em",marginBottom:6}}>
+              {t.complete}
+            </h2>
+            <p style={{color:css.t3,fontSize:"0.875rem",marginBottom:20}}>
+              {resultMsg(pct,t)}
+            </p>
+            <div style={{
+              fontSize:"clamp(3rem,12vw,5.5rem)",fontWeight:800,letterSpacing:"-0.04em",
+              background:"linear-gradient(125deg,#818CF8,#F43F5E)",
+              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+              lineHeight:1,
+            }}>{nCorrect}/{total}</div>
+            <div style={{color:css.t3,fontSize:"0.875rem",marginTop:6}}>{t.correct} answers</div>
+            <div style={{fontSize:"1.2rem",fontWeight:800,marginTop:8}}>{pct}%</div>
+            <div style={{
+              display:"inline-block",padding:"4px 18px",borderRadius:99,
+              background:G.color+"20",color:G.color,fontWeight:800,fontSize:"0.85rem",marginTop:12,
+            }}>Grade {G.label}</div>
+          </div>
+
+          {/* Stats */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}} className="stats-4col">
+            {[
+              {icon:"✅",val:nCorrect,label:t.correct,color:"#10B981"},
+              {icon:"❌",val:nWrong,  label:t.wrong,  color:"#F43F5E"},
+              {icon:"⏭️",val:nSkipped,label:t.skipped,color:"#F59E0B"},
+              {icon:"⏱️",val:fmtTime(elapsed),label:"Time",color:"#6366F1"},
+            ].map(({icon,val,label,color})=>(
+              <div key={label} className="fade-in" style={{
+                background:css.card,border:`1px solid ${css.b1}`,
+                borderRadius:14,padding:"16px 10px",textAlign:"center",boxShadow:css.shadow,
+              }}>
+                <div style={{fontSize:"1.1rem",marginBottom:5}}>{icon}</div>
+                <div style={{fontSize:"1.45rem",fontWeight:800,letterSpacing:"-0.03em",color,lineHeight:1}}>{val}</div>
+                <div style={{fontSize:"0.68rem",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",color:css.t3,marginTop:4}}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Analysis */}
+          <Card style={{padding:22,marginBottom:14}}>
+            <h3 style={{fontSize:"0.9rem",fontWeight:800,marginBottom:18}}>📊 Performance Breakdown</h3>
+            {[
+              {label:t.correct, pct:Math.round(nCorrect/total*100), color:"#10B981"},
+              {label:t.wrong,   pct:Math.round(nWrong/total*100),   color:"#F43F5E"},
+              {label:t.skipped, pct:Math.round(nSkipped/total*100), color:"#F59E0B"},
+            ].map(({label,pct:bp,color})=>(
+              <div key={label} style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.82rem",fontWeight:600,marginBottom:5,color:css.t2}}>
+                  <span>{label}</span><span style={{color:css.t3}}>{bp}%</span>
+                </div>
+                <div style={{height:8,background:css.b2,borderRadius:4,overflow:"hidden"}}>
+                  <div style={{
+                    height:"100%",borderRadius:4,background:color,
+                    width:`${bp}%`,transition:"width 1.2s cubic-bezier(0.34,1.56,0.64,1)",
+                  }}/>
+                </div>
+              </div>
+            ))}
+          </Card>
+
+          {/* Review */}
+          <Card style={{padding:22,marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:18}}>
+              <h3 style={{fontSize:"0.9rem",fontWeight:800}}>📋 {t.reviewTitle}</h3>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <Pill label={t.all}      active={rfilt==="all"}     color="#6366F1" onClick={()=>setRfilt("all")}/>
+                <Pill label={t.correctF} active={rfilt==="correct"} color="#10B981" onClick={()=>setRfilt("correct")}/>
+                <Pill label={t.wrongF}   active={rfilt==="wrong"}   color="#F43F5E" onClick={()=>setRfilt("wrong")}/>
+                <Pill label={t.skippedF} active={rfilt==="skipped"} color="#F59E0B" onClick={()=>setRfilt("skipped")}/>
+              </div>
+            </div>
+
+            {filtered.length===0 && (
+              <div style={{textAlign:"center",padding:"32px 20px",color:css.t3,fontSize:"0.875rem"}}>
+                {t.noQuestions}
+              </div>
+            )}
+
+            {filtered.map((q)=>{
+              const i   = quiz.questions.indexOf(q);
+              const a   = ans[i];
+              const typ = a?.ok?"correct":a?.skip||a?.sel===null?"skipped":"wrong";
+              const bc  = typ==="correct"?"rgba(16,185,129,0.28)":typ==="wrong"?"rgba(244,63,94,0.28)":"rgba(245,158,11,0.28)";
+              const ico = typ==="correct"?"✅":typ==="skipped"?"⏭️":"❌";
+              return (
+                <div key={i} style={{
+                  background:css.card2,border:`1.5px solid ${bc}`,
+                  borderRadius:13,padding:"16px",marginBottom:10,
+                }}>
+                  <div style={{display:"flex",gap:9,alignItems:"flex-start",marginBottom:12}}>
+                    <span style={{fontSize:"0.9rem",flexShrink:0,marginTop:2}}>{ico}</span>
+                    <span style={{fontSize:"0.9rem",fontWeight:700,color:css.t1,letterSpacing:"-0.01em",lineHeight:1.45,flex:1}}>
+                      {q.question}
+                    </span>
+                    <span style={{fontSize:"0.68rem",fontWeight:700,color:css.t3,whiteSpace:"nowrap"}}>Q{i+1}</span>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:q.explanation?10:0}}>
+                    {q.options.map((opt,oi)=>{
+                      const isC=oi===q.correct, isSel=oi===a?.sel;
+                      const s=isC?{c:"#10B981",bg:"rgba(16,185,129,0.09)",bc:"rgba(16,185,129,0.28)"}
+                               :isSel?{c:"#F43F5E",bg:"rgba(244,63,94,0.09)",bc:"rgba(244,63,94,0.28)"}
+                               :{c:css.t3,bg:"transparent",bc:css.b2};
+                      return (
+                        <div key={oi} style={{
+                          display:"flex",gap:9,alignItems:"center",padding:"7px 11px",
+                          borderRadius:8,border:`1px solid ${s.bc}`,background:s.bg,
+                          fontSize:"0.82rem",fontWeight:600,color:s.c,
+                        }}>
+                          <span style={{
+                            width:20,height:20,borderRadius:5,
+                            border:`1px solid ${s.bc}`,
+                            display:"flex",alignItems:"center",justifyContent:"center",
+                            fontSize:"0.65rem",fontWeight:800,flexShrink:0,
+                          }}>{["A","B","C","D","E"][oi]}</span>
+                          {opt}
+                          {isC&&<span style={{marginLeft:"auto"}}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {q.explanation&&(
+                    <div style={{
+                      background:"rgba(99,102,241,0.07)",border:"1px solid rgba(99,102,241,0.18)",
+                      borderRadius:9,padding:"10px 13px",
+                      fontSize:"0.82rem",color:css.t2,lineHeight:1.65,
+                    }}>
+                      <div style={{fontSize:"0.68rem",fontWeight:700,color:"#818CF8",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:5,display:"block"}}>
+                        💡 {t.explanation}
+                      </div>
+                      {q.explanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </Card>
+
+          {/* Action buttons */}
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button className="btn-primary" onClick={()=>{
+              setQIdx(0);setExpl(false);setElapsed(0);setStartT(Date.now());
+              setAns(quiz.questions.map(()=>({sel:null,ok:false,skip:false})));
+              setPhase("quiz");
+            }} style={{
+              padding:"12px 26px",borderRadius:99,fontSize:"0.9rem",fontWeight:800,
+              background:"linear-gradient(135deg,#6366F1,#8B5CF6)",border:"none",color:"#fff",
+              boxShadow:"0 6px 22px rgba(99,102,241,0.38)",cursor:"pointer",
+            }}>{t.retry}</button>
+            <button onClick={()=>{setFile(null);setQuiz(null);setPhase("upload");setBmarks(new Set());}} style={{
+              padding:"12px 26px",borderRadius:99,fontSize:"0.9rem",fontWeight:800,
+              background:"transparent",border:`1.5px solid ${css.b1}`,color:css.t1,cursor:"pointer",
+            }}>{t.newQuiz}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SUB-COMPONENTS ───────────────────────────────────────────
+
+function DiffBadge({d}) {
+  const c={easy:"#10B981",medium:"#F59E0B",hard:"#F43F5E",mixed:"#8B5CF6"}[d]||"#6366F1";
+  return (
+    <span style={{
+      fontSize:"0.65rem",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",
+      padding:"2px 9px",borderRadius:99,
+      background:`${c}18`,color:c,border:`1px solid ${c}30`,
+    }}>{d}</span>
+  );
+}
+
+// ─── MOUNT ────────────────────────────────────────────────────
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
